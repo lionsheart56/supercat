@@ -1,8 +1,4 @@
 <?php
-	//error_reporting(E_ALL);
- 	//ini_set('display_startup_errors', 1);
- 	//ini_set('display_errors', 1);
-
  	require("JSLikeHTMLElement.php");
 
  	class Reader{
@@ -20,6 +16,7 @@
         	'normalize' => '/\s{2,}/',
             'killBreaks' => '/(<br\s*\/?>(\s|&nbsp;?)*){1,}/',
         	'okMaybeItsACandidate' => '/and|article|body|column|main|shadow/i',
+            'video' => '/http:\/\/(www\.)?(youtube|vimeo)\.com/i',
         	'divToPElements' => '/<(a|blockquote|dl|div|img|ol|p|pre|table|ul)/i',
         	'positive' => '/article|body|content|entry|hentry|main|page|pagination|post|text|blog|story/i',
         	'negative' => '/combx|comment|com-|contact|foot|footer|footnote|masthead|media|meta|outbrain|promo|related|scroll|shoutbox|sidebar|sponsor|shopping|tags|tool|widget/i'
@@ -297,7 +294,7 @@
             $maxnode=null;
      		for($i=0;$i<count($candidates);$i++){
 	            $reader= $candidates[$i]->getAttributeNode('reader');
-    	        echo "Each Block Value: ".$reader->value . '<br/>';
+    	        //echo "Each Block Value: ".$reader->value . '<br/>';
                 $reader->value*=(1-$this->LinkDensity($candidates[$i]));
                 if($reader->value > $maxvalue){
                     $maxvalue=$reader->value;
@@ -306,8 +303,8 @@
     		}
 
            
-            echo "The most :". $maxvalue . " And its content : <br/>";
-            echo $this->getInnerText($maxnode);
+           // echo "The most :". $maxvalue . " And its content : <br/>";
+            //echo $this->getInnerText($maxnode);
  		
             //Looking for Sibling Node
             $Content=$this->dom->createElement('div');
@@ -371,12 +368,12 @@
                     $Content->appendChild($nodeToAppend);
                 }
             }
-          // $Content->innerHTML;
-           // $this->ContentClean($Content);
-            $doc=$this->getInnerText($Content);
-            echo $doc;
+            $this->ContentClean($Content);
+            echo "Lions";
+            //echo $Content->innerHTML;
             return $Content;     
         }
+
 
         private function ContentClean($node){
             $this->CleanStyle($node);
@@ -391,9 +388,9 @@
             $this->Clean($node,'iframe');
             $this->CleanHeader($node);
             $this->CleanSomething($node,'table');
-            $this->CleanSomething($node,'ul');
+            /*$this->CleanSomething($node,'ul');
             $this->CleanSomething($node,'div');
-
+    
             $para=$node->getElementsByTagName('p');
             for($i=$para->length-1;$i>=0;$i--){
                 $img=$para->item($i)->getElementsByTagName('img')->length;
@@ -403,14 +400,14 @@
                 if($img===0 && $embed===0 && $object===0 && $this->getInnerText($para->item($i),false)==''){
                     $para->item($i)->parentNode->removeChild($para->item($i));
                 }
-            }
+            }*/
 
-            try{
-                $node->innerHTML=preg_replace('/<br[^>]*>\s*<p/i','<p',$node->innerHTML);
-            }
-            catch(Exception $e){
-
-            }
+//            try{
+  //              $node->innerHTML=preg_replace('/<br[^>]*>\s*<p/i','<p',$node->innerHTML);
+    //        }
+      //      catch(Exception $e){
+//
+  //          }
         }
 
         private function CleanHeader($w){
@@ -449,15 +446,70 @@
 
         private function CleanSomething($w,$tag){
 
-            $tagList=$w->getElementsByTagName($tag);
-            $Length=$tagList->length;
+            $List = $w->getElementsByTagName($tag);
+            $Length=$List->length;
 
-            for($i=$Length-1;$i>=0;$i--){
-                $weight=$this->ClassWeight($tagList->item($i));
-                $contentScore = ($tagList->item($i)->hasAttribute('reader')) ? (int)$tagList->item($i)->getAttribute('reader') :0;
+            for($i=$Length-1 ; $i >= 0 ; $i--){
+                $weight=$this->ClassWeight($List->item($i));
+                $contentScore=($List->item($i)->hasAttribute('reader')) ? (int)$List->item($i)->getAttribute('reader') : 0;
+
+                if($weight + $contentScore < 0){
+                    $List->item($i)->parentNode->removeChild($List->item($i));
+                }
+                else if($this->getCharCount($List->item($i),',') < 10){
+
+                    $p = $List->item($i)->getElementsByTagName('p')->length;
+                    $img = $List->item($i)->getElementsByTagName('img')->length;
+                    $li = $List->item($i)->getElementsByTagName('li')->length-100;
+                    $input = $List->item($i)->getElementsByTagName('input')->length;
+
+                    $count=0;
+                    $embeds = $List->item($i)->getElementsByTagName('embed');
+
+                    for($ei=0, $il=$embeds->length ; $ei<$il ; $ei++){
+                        if( preg_match($this->regexps['video'],$embeds->item($ei)->getAttribute('src'))){
+                            $count++;
+                        }
+                    }
+
+                    $linkdensity=$this->LinkDensity($List->item($i));
+                    $contentLength=strlen($this->getInnerText($List->item($i)));
+                    $toRemove = false;
+
+             
+
+                    if($img < $p){
+                        $toRemove = true;
+                    }
+                    else if($li < $p && $tag != 'ul' && $tag!='ol'){
+                        $toRemove = true;
+                    }
+                    else if($input < floor($p/3)){
+                        $toRemove = true;
+                    }
+                    else if($contentLength<25 && ($img===0 || $img>3)){
+                        $toRemove = true;
+                    }
+                    else if($weight < 25 && $linkdensity > 0.2){
+                        $toRemove = true;
+                    }
+                    else if($weight >= 25 && $linkdensity > 0.5){
+                        $toRemove = true;
+                    }
+                    else if(($count==1 && $contentLength <75) || $count > 1 ){
+                        $toRemove = true;
+                    }
+             
+                    if($toRemove){
+                        $List->item($i)->parentNode->removeChild($List->$item($i));  // still bug
+                    }
+                }
+
+
             }
-
+            
         }
+
         private function CleanStyle($w){
             if(!is_object($w)) return ;
             $e=$w->getElementsByTagName('*');
@@ -472,6 +524,10 @@
             $html=preg_replace($this->regexps['killBreaks'],'<br/>',$html);
             $w->innerHTML=$html;
         }
+
+        public function getCharCount($e, $s=',') {
+        return substr_count($this->getInnerText($e), $s);
+    }
 
  	}
     $url=$_POST["url"];
